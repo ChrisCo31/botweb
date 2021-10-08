@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <link rel="stylesheet" href="style.css" />
+        <title>UConnect</title>
+    </head>
+    
+    <body>
+        <div id="bloc_page">
+            <header>
+                <div id="titre_principal">
+                    <div id="logo">
+                        <img src="images/logo.png" alt="Logo Accenture" />
+                        <h1>UConnect</h1>    
+                    </div>
+                    <h2>Le site web du projet Uconnect</h2>
+                </div>
+                
+                <nav>
+                    <ul>
+                        <li><a href="#">Accueil</a></li>
+                        <li><a href="#">Services</a></li>
+                        <li><a href="#">Contact</a></li>
+                    </ul>
+                </nav>
+            </header>
+            <hr>
+            <div id="banniere_image">
+                <div id="banniere_description">
+                    Un projet basé sur le service Amazon connect
+                    <a href="#" class="bouton">Voir l'article</a>
+                </div>
+            </div>
+            <section>
+                <article>
+                    <h1>Le projet UConnect</h1>
+
+                    <p>UConnect est un projet initié au sein de Gekko part of Accenture. Il prend comme base de départ Amazon Connect, le service de call center proposé par AWS. 
+                        L'équipe UConnect souhaite mettre en place un certain nombre de fonctionnalités qui ont vocation a ameliorer l'experience utlisateurs dans le cadre de service support et ce quelques soit le canal utlisé (voix, chat)
+
+                    <p> S'appuyant sur l'ecosysteme AWS, il s'agit bien sur de s'appuyer sur les fonctionnalites natives du service (vocie ID? lens, etc) que  d'utliser Amazon connect comme un orchestrateur 
+                        dans lequel des services AWS  specifiques viendront enrichir cette experience</p>
+                    <p>En y integrant des services relevant de l'IA (Lex), de la dataviz (Quicksight) ou de la mise en place de notifications dédiés (AWS Pinpoint) le projet UConnect se propose de repenser 
+                        toute l'experience utlisateur.</p>
+                        
+                </article>
+                
+            </section>
+            <hr>
+            <footer>
+                <div id="colonne_un">
+                    <h1>Under construction</h1>
+                </div>
+                <div id="colonne_deux">
+                    <h1>Under construction</h1>
+                </div>
+                <div id="colonne_trois">
+                    <h1>Team UConnect</h1>
+                    <div id="listes">
+                        <ul>
+                            <li><a href="#">Olivier</a></li>
+                            <li><a href="#">Julie</a></li>
+                            <li><a href="#">Vivien</a></li>
+                            <li><a href="#">Jeanne</a></li>
+                            <li><a href="#">Christel</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </footer>
+        </div>
+        <!-- js-->
+        <script src="./lex-web-ui-loader.js"></script>
+    <script>
+      /*
+        The loader library creates a global object named ChatBotUiLoader
+        It includes the IframeLoader constructor
+        An instance of IframeLoader has the load function which kicks off
+        the load process
+      */
+
+      // options for the loader constructor
+      var loaderOptions = {
+        // you can put the chatbot UI config in a JSON file
+        configUrl: './chatbot-ui-loader-config.json',
+
+        // the full page chatbot UI that will be iframed
+        iframeSrcPath: './chatbot-index.html#/?lexWebUiEmbed=true'
+      };
+
+      // The following statement instantiates the IframeLoader
+      var iframeLoader = new ChatBotUiLoader.IframeLoader(loaderOptions);
+
+      // chatbot UI config
+      // The loader can also obtain these values from other sources such
+      // as a JSON file or events. The configUrl variable in the
+      // loaderOptions above can be used to put these config values in a file
+      // instead of explicitly passing it as an argument.
+      var chatbotUiConfig = {
+        ui: {
+          // origin of the parent site where you are including the chatbot UI
+          // set to window.location.origin since hosting on same site
+          parentOrigin: window.location.origin,
+        },
+        iframe: {
+          // origin hosting the HTML file that will be embedded in the iframe
+          // set to window.location.origin since hosting on same site
+          iframeOrigin: window.location.origin,
+        },
+        cognito: {
+          // Your Cognito Pool Id - this is required to provide AWS credentials
+          poolId: '<your cognito pool id>'
+        },
+        connect: {
+          contactFlowId : '<your contact flow id>',
+          instanceId : '<your instance id>',
+          apiGatewayEndpoint : '<your api gateway endpoint>',
+        },
+        lex: {
+          // Lex Bot Name in your account
+          botName: '<your lex bot name>'
+        }
+      };
+
+      // Call the load function which returns a promise that is resolved
+      // once the component is loaded or is rejected if there is an error
+      iframeLoader.load(chatbotUiConfig)
+        .then(function () {
+          console.log('iframe loaded');
+        })
+        .catch(function (err) {
+          console.error(err);
+        });
+    </script>
+    </body>
+</html>

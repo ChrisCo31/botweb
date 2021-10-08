@@ -1,0 +1,620 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "This template configures a user pool domain and hosted login\n",
+    "Parameters": {
+        "CognitoIdentityPoolName": {
+            "Type": "String",
+            "Description": "Cognito identity pool name.",
+            "Default": "identity pool",
+            "MinLength": 1,
+            "MaxLength": 128,
+            "AllowedPattern": "^[\\w ]+$",
+            "ConstraintDescription": "Alphanumeric and spaces."
+        },
+        "LexBotName": {
+            "Type": "String",
+            "Description": "Lex bot name used to build IAM policy",
+            "Default": "OrderFlowers"
+        },
+        "LexV2BotId": {
+            "Description": "Name of an existing Lex V2 Bot to be used by the web ui.\n",
+            "Type": "String",
+            "Default": ""
+        },
+        "LexV2BotAliasId": {
+            "Description": "Use your Lex V2 bot's alias id.\n",
+            "Type": "String",
+            "Default": ""
+        },
+        "ForceCognitoLogin": {
+            "Type": "String",
+            "Default": false,
+            "Description": "If set to True, the menu with a login action will not be displayed in the Lex Web Ui, and the Cognito login will be executed automatically.\n"
+        },
+        "ShouldEnableLiveChat": {
+            "Type": "String",
+            "Default": false,
+            "Description": "Whether or not add policy to invoke live chat API"
+        }
+    },
+    "Conditions": {
+        "NeedsForceCognitoLogin": {
+            "Fn::Equals": [
+                {
+                    "Ref": "ForceCognitoLogin"
+                },
+                "true"
+            ]
+        },
+        "IsLexV1": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "LexBotName"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "IsLexV2": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "LexV2BotId"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        },
+        "EnableLiveChat": {
+            "Fn::Equals": [
+                {
+                    "Ref": "ShouldEnableLiveChat"
+                },
+                true
+            ]
+        }
+    },
+    "Resources": {
+        "CognitoIdentityPool": {
+            "Type": "AWS::Cognito::IdentityPool",
+            "Properties": {
+                "IdentityPoolName": {
+                    "Ref": "CognitoIdentityPoolName"
+                },
+                "AllowUnauthenticatedIdentities": true,
+                "CognitoIdentityProviders": [
+                    {
+                        "ClientId": {
+                            "Ref": "CognitoUserPoolClient"
+                        },
+                        "ProviderName": {
+                            "Fn::GetAtt": [
+                                "CognitoUserPool",
+                                "ProviderName"
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "CognitoIdentityPoolSetRole": {
+            "Type": "AWS::Cognito::IdentityPoolRoleAttachment",
+            "Properties": {
+                "IdentityPoolId": {
+                    "Ref": "CognitoIdentityPool"
+                },
+                "Roles": {
+                    "authenticated": {
+                        "Fn::If": [
+                            "IsLexV1",
+                            {
+                                "Fn::GetAtt": [
+                                    "CognitoAuthRoleV1",
+                                    "Arn"
+                                ]
+                            },
+                            {
+                                "Fn::GetAtt": [
+                                    "CognitoAuthRoleV2",
+                                    "Arn"
+                                ]
+                            }
+                        ]
+                    },
+                    "unauthenticated": {
+                        "Fn::If": [
+                            "IsLexV1",
+                            {
+                                "Fn::GetAtt": [
+                                    "CognitoUnauthRoleV1",
+                                    "Arn"
+                                ]
+                            },
+                            {
+                                "Fn::GetAtt": [
+                                    "CognitoUnauthRoleV2",
+                                    "Arn"
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        "CognitoUserPool": {
+            "Type": "AWS::Cognito::UserPool",
+            "Properties": {
+                "AutoVerifiedAttributes": [
+                    "email"
+                ],
+                "MfaConfiguration": "OFF",
+                "AliasAttributes": [
+                    "email"
+                ],
+                "Schema": [
+                    {
+                        "AttributeDataType": "String",
+                        "Name": "given_name",
+                        "Required": true,
+                        "Mutable": true
+                    },
+                    {
+                        "AttributeDataType": "String",
+                        "Name": "family_name",
+                        "Required": true,
+                        "Mutable": true
+                    },
+                    {
+                        "AttributeDataType": "String",
+                        "Name": "email",
+                        "Required": true,
+                        "Mutable": true
+                    },
+                    {
+                        "AttributeDataType": "String",
+                        "Name": "preferred_username",
+                        "Required": true,
+                        "Mutable": true
+                    }
+                ],
+                "UserPoolName": {
+                    "Fn::Join": [
+                        "-",
+                        [
+                            "UserPool",
+                            {
+                                "Fn::Select": [
+                                    0,
+                                    {
+                                        "Fn::Split": [
+                                            "-CognitoIdentityPool",
+                                            {
+                                                "Ref": "AWS::StackName"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    ]
+                }
+            }
+        },
+        "CognitoUserPoolClient": {
+            "Type": "AWS::Cognito::UserPoolClient",
+            "Properties": {
+                "GenerateSecret": false,
+                "UserPoolId": {
+                    "Ref": "CognitoUserPool"
+                }
+            }
+        },
+        "CognitoUnauthRoleV1": {
+            "Condition": "IsLexV1",
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Principal": {
+                                "Federated": "cognito-identity.amazonaws.com"
+                            },
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRoleWithWebIdentity"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "cognito-identity.amazonaws.com:aud": {
+                                        "Ref": "CognitoIdentityPool"
+                                    }
+                                },
+                                "ForAnyValue:StringLike": {
+                                    "cognito-identity.amazonaws.com:amr": "unauthenticated"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "LexPost",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": {
+                                        "Fn::If": [
+                                            "NeedsForceCognitoLogin",
+                                            "Deny",
+                                            "Allow"
+                                        ]
+                                    },
+                                    "Action": [
+                                        "lex:PostText",
+                                        "lex:PostContent",
+                                        "lex:DeleteSession",
+                                        "lex:PutSession"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot:${LexBotName}:*"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "Fn::If": [
+                            "EnableLiveChat",
+                            {
+                                "PolicyName": "APIPost",
+                                "PolicyDocument": {
+                                    "Version": "2012-10-17",
+                                    "Statement": [
+                                        {
+                                            "Effect": {
+                                                "Fn::If": [
+                                                    "NeedsForceCognitoLogin",
+                                                    "Deny",
+                                                    "Allow"
+                                                ]
+                                            },
+                                            "Action": [
+                                                "execute-api:Invoke"
+                                            ],
+                                            "Resource": [
+                                                {
+                                                    "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/Prod/POST/livechat"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        "CognitoUnauthRoleV2": {
+            "Condition": "IsLexV2",
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Principal": {
+                                "Federated": "cognito-identity.amazonaws.com"
+                            },
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRoleWithWebIdentity"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "cognito-identity.amazonaws.com:aud": {
+                                        "Ref": "CognitoIdentityPool"
+                                    }
+                                },
+                                "ForAnyValue:StringLike": {
+                                    "cognito-identity.amazonaws.com:amr": "unauthenticated"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "LexV2",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": {
+                                        "Fn::If": [
+                                            "NeedsForceCognitoLogin",
+                                            "Deny",
+                                            "Allow"
+                                        ]
+                                    },
+                                    "Action": [
+                                        "lex:RecognizeText",
+                                        "lex:RecognizeUtterance",
+                                        "lex:DeleteSession",
+                                        "lex:PutSession"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${LexV2BotId}/${LexV2BotAliasId}"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "Fn::If": [
+                            "EnableLiveChat",
+                            {
+                                "PolicyName": "APIPost",
+                                "PolicyDocument": {
+                                    "Version": "2012-10-17",
+                                    "Statement": [
+                                        {
+                                            "Effect": {
+                                                "Fn::If": [
+                                                    "NeedsForceCognitoLogin",
+                                                    "Deny",
+                                                    "Allow"
+                                                ]
+                                            },
+                                            "Action": [
+                                                "execute-api:Invoke"
+                                            ],
+                                            "Resource": [
+                                                {
+                                                    "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/Prod/POST/livechat"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        "CognitoAuthRoleV1": {
+            "Condition": "IsLexV1",
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Principal": {
+                                "Federated": "cognito-identity.amazonaws.com"
+                            },
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRoleWithWebIdentity"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "cognito-identity.amazonaws.com:aud": {
+                                        "Ref": "CognitoIdentityPool"
+                                    }
+                                },
+                                "ForAnyValue:StringLike": {
+                                    "cognito-identity.amazonaws.com:amr": "authenticated"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "PollySynth",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "polly:SynthesizeSpeech"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "LexPost",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "lex:PostText",
+                                        "lex:PostContent",
+                                        "lex:DeleteSession",
+                                        "lex:PutSession"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot:${LexBotName}:*"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "Fn::If": [
+                            "EnableLiveChat",
+                            {
+                                "PolicyName": "APIPost",
+                                "PolicyDocument": {
+                                    "Version": "2012-10-17",
+                                    "Statement": [
+                                        {
+                                            "Effect": "Allow",
+                                            "Action": [
+                                                "execute-api:Invoke"
+                                            ],
+                                            "Resource": [
+                                                {
+                                                    "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/Prod/POST/livechat"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        "CognitoAuthRoleV2": {
+            "Condition": "IsLexV2",
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Principal": {
+                                "Federated": "cognito-identity.amazonaws.com"
+                            },
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRoleWithWebIdentity"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "cognito-identity.amazonaws.com:aud": {
+                                        "Ref": "CognitoIdentityPool"
+                                    }
+                                },
+                                "ForAnyValue:StringLike": {
+                                    "cognito-identity.amazonaws.com:amr": "authenticated"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "PollySynth",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "polly:SynthesizeSpeech"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "LexV2",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "lex:RecognizeText",
+                                        "lex:RecognizeUtterance",
+                                        "lex:DeleteSession",
+                                        "lex:PutSession"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/${LexV2BotId}/${LexV2BotAliasId}"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "Fn::If": [
+                            "EnableLiveChat",
+                            {
+                                "PolicyName": "APIPostV2",
+                                "PolicyDocument": {
+                                    "Version": "2012-10-17",
+                                    "Statement": [
+                                        {
+                                            "Effect": "Allow",
+                                            "Action": [
+                                                "execute-api:Invoke"
+                                            ],
+                                            "Resource": [
+                                                {
+                                                    "Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/Prod/POST/livechat"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "Ref": "AWS::NoValue"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "CognitoIdentityPoolId": {
+            "Description": "Cognito identity pool id.",
+            "Value": {
+                "Ref": "CognitoIdentityPool"
+            }
+        },
+        "CognitoUserPoolId": {
+            "Description": "Cognito user pool id.",
+            "Value": {
+                "Ref": "CognitoUserPool"
+            }
+        },
+        "CognitoUserPoolClientId": {
+            "Description": "Cognito user pool client id.",
+            "Value": {
+                "Ref": "CognitoUserPoolClient"
+            }
+        }
+    }
+}

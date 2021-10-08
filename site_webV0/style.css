@@ -1,0 +1,202 @@
+
+
+/* Eléments principaux de la page */
+
+body
+{
+    background-color:#a100ff;
+    font-family: 'Trebuchet MS', Arial, sans-serif;
+    color: white;
+}
+
+#bloc_page
+{
+    width: 950px;
+    margin: auto;
+}
+
+section h1, footer h1, nav a
+{
+    font-family: 'Trebuchet MS', Arial, sans-serif;
+    font-weight: normal;
+    text-transform: uppercase;
+}
+
+/* Header */
+
+header
+{
+    background-color: #1d042b repeat-x bottom;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+#titre_principal
+{
+    display: flex;
+    flex-direction: column;
+}
+
+#logo
+{
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+}
+
+#logo img
+{
+    width: 60px;
+    height: 60px;
+}
+
+header h1
+{
+    font-family: 'Trebuchet MS', Arial, sans-serif;
+    font-size: 2.5em;
+    font-weight: normal;
+    margin: 0 0 0 10px;
+}
+
+header h2
+{
+    font-family: Dayrom, serif;
+    font-size: 1.1em;
+    margin-top: 0px;
+    font-weight: normal;
+}
+
+/* Navigation */
+
+nav ul
+{
+    list-style-type: none;
+    display: flex;
+    color: white;
+}
+
+nav li
+{
+    margin-right: 15px;
+    color: white;
+}
+
+nav a
+{
+    font-size: 1.3em;
+    color: white;
+    padding-bottom: 3px;
+    text-decoration: none;
+}
+
+nav a:hover
+{
+    color: #1d042b;
+    border-bottom: 3px solid #1d042b;
+}
+
+/* Bannière */
+
+#banniere_image
+{
+    margin-top: 15px;
+    height: 500px;
+    border-radius: 5px;
+    background: url('images/amazon_connect.png') no-repeat;
+    position: relative;
+    box-shadow: 0px 4px 4px #1d042b;
+    margin-bottom: 5px;
+}
+
+#banniere_description
+{
+    position: absolute;
+    bottom: 0;
+    border-radius: 0px 0px 5px 5px;
+    width: 99.5%;
+    height: 33px;
+    padding-top: 15px;
+    padding-left: 4px;
+    color: white;
+    font-size: 0.8em;
+    
+}
+hr{
+    background-color:white;
+    height: 1px;
+  }
+.bouton
+{
+    height: 25px;
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    background-color: #a100ff repeat-x;
+    border: 1px solid #1d042b;
+    border-radius: 5px;
+    font-size: 1.2em;
+    text-align: center;
+    padding: 3px 8px 0px 8px;
+    color: white;
+    text-decoration: none;
+}
+
+/* Corps */
+
+section
+{
+    display: flex;
+    margin-bottom: 20px;
+}
+
+article
+{
+    text-align: justify;
+}
+
+article
+{
+    margin-right: 20px;
+    flex: 3;
+}
+
+article p
+{
+    font-size: 0.8em;
+}
+
+/* Footer */
+
+footer
+{
+    display: flex;
+    background-color: #1d042b repeat-x top;
+    padding-top: 25px;
+}
+
+footer p, footer ul
+{
+    font-size: 0.8em;
+}
+
+footer h1
+{
+    font-size: 1.1em;
+}
+
+
+#colonne_un
+{
+    width: 40%;
+}
+
+#colonne_deux
+{
+    width: 40%;
+}
+
+#colonne_trois
+{
+    width: 31%;
+}
