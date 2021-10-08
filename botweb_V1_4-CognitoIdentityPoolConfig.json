@@ -1,0 +1,373 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "This template updates a cognito user pool client with a domain and app configuration\n",
+    "Parameters": {
+        "CloudFrontUrl": {
+            "Type": "String",
+            "Description": "Url of the base CF distro web app used by callbacks within the user pool",
+            "Default": ""
+        },
+        "WebAppUrl": {
+            "Type": "String",
+            "Description": "Url of the target web app (hosting page) )used by callbacks within the user pool",
+            "Default": ""
+        },
+        "WebAppPath": {
+            "Type": "String",
+            "Description": "Path to reach top level page in within the WebAppUrl. ie: /index.html",
+            "Default": "/index.html"
+        },
+        "CodeBuildProjectName": {
+            "Type": "String",
+            "Description": "CodeBuildProjectName to update environment configuration"
+        },
+        "CognitoUserPool": {
+            "Type": "String",
+            "Description": "Cognito UserPool Id"
+        },
+        "CognitoUserPoolClient": {
+            "Type": "String",
+            "Description": "Cognito UserPool Client Id"
+        },
+        "Timestamp": {
+            "Type": "Number",
+            "Description": "This is a required parameter.\n"
+        }
+    },
+    "Resources": {
+        "CognitoUserPoolDomain": {
+            "Type": "Custom::CognitouserPoolDomain",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "CognitoUserPoolDomainFunction",
+                        "Arn"
+                    ]
+                }
+            }
+        },
+        "CognitoUserPoolDomainFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Handler": "index.handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "CognitoUserPoolDomainExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "python3.8",
+                "Timeout": 300,
+                "TracingConfig": {
+                    "Mode": "Active"
+                },
+                "Code": {
+                    "ZipFile": {
+                        "Fn::Sub": "from __future__ import print_function\nimport json\nimport boto3\nimport cfnresponse\nimport time\ndef handler(event, context):\n    print(json.dumps(event))\n    stackname = '${CleanStackName.CleanStackNameValue}'[0:50]\n    id = stackname + '${AWS::AccountId}'\n    id = id.lower().replace(\"cognito\",\"\")\n    print('final id: ' + id)\n    if (event[\"RequestType\"] == \"Delete\"):\n        try:\n            deleteDomain(id)\n        except Exception as e:\n            print(\"Exception thrown: %s\" % str(e))\n            pass\n    elif (event[\"RequestType\"] == \"Create\"):\n        try:\n            name = createDomain(id)\n            print('name: ' + name)\n            fullname = name + '.auth.' + '${AWS::Region}' + '.amazoncognito.com'\n            print('fullname: ' + fullname)\n            updateCodeBuildEnvironment('${CodeBuildProjectName}', fullname)\n        except Exception as e:\n            print(\"Exception thrown: %s\" % str(e))\n            pass\n    else:\n        print(\"RequestType %s, nothing to do\" % event[\"RequestType\"])\n    time.sleep(30)  # pause for CloudWatch logs\n    print('Done')\n    responseData={\"domainid\":id}\n    try:\n        cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, id)\n    except Exception as e:\n        print(\"Exception thrown in cfnresponse: %s\" % str(e))\n        pass\ndef deleteDomain(stackName):\n    normalized = stackName.lower()\n    print(\"Deleting domain %s\" % normalized)\n    client = boto3.client('cognito-idp')\n    response = client.delete_user_pool_domain(\n        Domain=normalized,\n        UserPoolId='${CognitoUserPool}'\n    )\n    return response\ndef createDomain(stackName):\n    normalized = stackName.lower()\n    print(\"Creating domain %s\" % normalized)\n    client = boto3.client('cognito-idp')\n    response = client.create_user_pool_domain(\n        Domain=normalized,\n        UserPoolId='${CognitoUserPool}'\n    )\n    return normalized\ndef updateCodeBuildEnvironment(projectname, domainname):\n    print(\"Updating codebuild project %s\" % projectname)\n    client = boto3.client('codebuild')\n    data = client.batch_get_projects(\n    names=[\n          projectname\n        ]\n    )\n    projects = data.get('projects')\n    project = projects[0]\n    environment = project.get('environment')\n    variables = environment.get('environmentVariables')\n    updated = False\n    for element in variables :\n        if element.get('name') == 'APP_DOMAIN_NAME':\n            element.update({'value': domainname})\n            updated = True\n    if not updated:\n        item = {\n            'name': 'APP_DOMAIN_NAME',\n            'value': domainname,\n            'type': 'PLAINTEXT'\n        }\n        variables.append(item)\n    response = client.update_project(\n        name=projectname,\n        environment=environment\n    )\n    response = client.start_build(\n        projectName=projectname\n    )\n    return response\n"
+                    }
+                }
+            }
+        },
+        "CognitoUserPoolDomainExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Principal": {
+                                "Service": [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "LogsForLambda",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "CognitoAuth",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "cognito-sync:*",
+                                        "cognito-identity:*",
+                                        "cognito-idp:*"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPool}"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "CodeBuildUpdate",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codebuild:BatchGetProjects",
+                                        "codebuild:UpdateProject",
+                                        "codebuild:StartBuild"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${CodeBuildProjectName}"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "XRay",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "xray:PutTraceSegments",
+                                        "xray:PutTelemetryRecords"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "AllowVPCSupport",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ec2:DescribeNetworkInterfaces",
+                                        "ec2:CreateNetworkInterface",
+                                        "ec2:DeleteNetworkInterface"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "CognitoUserPoolUpdates": {
+            "Type": "Custom::CognitoUserPoolUpdates",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "CognitoUserPoolUpdatesFunction",
+                        "Arn"
+                    ]
+                },
+                "CloudFrontUrl": {
+                    "Ref": "CloudFrontUrl"
+                },
+                "WebAppUrl": {
+                    "Ref": "WebAppUrl"
+                },
+                "WebAppPath": {
+                    "Ref": "WebAppPath"
+                },
+                "CodeBuildProjectName": {
+                    "Ref": "CodeBuildProjectName"
+                },
+                "CognitoUserPool": {
+                    "Ref": "CognitoUserPool"
+                },
+                "CognitoUserPoolClient": {
+                    "Ref": "CognitoUserPoolClient"
+                },
+                "Timestamp": {
+                    "Ref": "Timestamp"
+                }
+            }
+        },
+        "CognitoUserPoolUpdatesFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Handler": "index.handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "CognitoUserPoolDomainExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "python3.8",
+                "Timeout": 300,
+                "Environment": {
+                    "Variables": {
+                        "TIMESTAMP": {
+                            "Ref": "Timestamp"
+                        }
+                    }
+                },
+                "TracingConfig": {
+                    "Mode": "Active"
+                },
+                "Code": {
+                    "ZipFile": {
+                        "Fn::Sub": "from __future__ import print_function\nimport json\nimport boto3\nimport cfnresponse\nimport time\ndef handler(event, context):\n    print(json.dumps(event))\n    if (event[\"RequestType\"] == \"Create\" or event[\"RequestType\"] == \"Update\"):\n        try:\n            updatePool(\"${CleanStackName.CleanStackNameValue}\")\n        except Exception as e:\n            print(\"Exception thrown: %s\" % str(e))\n            pass\n    else:\n        print(\"RequestType %s, nothing to do\" % event[\"RequestType\"])\n    time.sleep(30)  # pause for CloudWatch logs\n    print('Done')\n    responseData={\"Data\":\"OK\"}\n    try:\n        cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)\n    except Exception as e:\n        print(\"Exception thrown in cfnresponse: %s\" % str(e))\n        pass\ndef updatePool(stackName):\n    normalized = stackName.lower()\n    print(\"Updating Pool domain %s\" % normalized)\n    callbackURLs=[\n        '${CloudFrontUrl}/index.html?loggedin=yes',\n        '${CloudFrontUrl}/parent.html?loggedin=yes'\n    ]\n    logoutURLs=[\n        '${CloudFrontUrl}/index.html?loggedout=yes',\n        '${CloudFrontUrl}/parent.html?loggedout=yes'\n    ]\n    # Add CallBack and Logout URLs for specified WebApp, if specified\n    # Allow multiple paths under same webAppUrl - comma separated\n    # If either WebAppUrl or WebAppPath are upper or mixed case, add a \n    # lowercase variant to help avoid redirect failures due to case mismatch\n    webAppUrl='${WebAppUrl}'\n    webAppPaths = [x.strip() for x in '${WebAppPath}'.split(',')]\n    if webAppUrl:\n        for webAppPath in webAppPaths:\n            fullUrl=f'{webAppUrl}{webAppPath}'\n            callbackURLs.insert(0,'%s?loggedin=yes' % fullUrl)\n            logoutURLs.insert(0,'%s?loggedout=yes' % fullUrl)\n            if (fullUrl != fullUrl.lower()):\n                callbackURLs.insert(0,'%s?loggedin=yes' % fullUrl.lower())\n                logoutURLs.insert(0,'%s?loggedout=yes' % fullUrl.lower())                                \n    client = boto3.client('cognito-idp')\n    currentClientConfig = client.describe_user_pool_client(\n                        UserPoolId='${CognitoUserPool}',\n                        ClientId='${CognitoUserPoolClient}'\n                    )\n    supportedIDProviders = currentClientConfig.get('UserPoolClient').get('SupportedIdentityProviders')\n    if not supportedIDProviders:\n        supportedIDProviders = list()\n    if len(supportedIDProviders) == 0:\n        supportedIDProviders.append('COGNITO')\n    print(supportedIDProviders)\n    response = client.update_user_pool_client(\n        UserPoolId='${CognitoUserPool}',\n        ClientId='${CognitoUserPoolClient}',\n        ClientName=normalized,\n        RefreshTokenValidity=365,\n        CallbackURLs=callbackURLs,\n        LogoutURLs=logoutURLs,\n        SupportedIdentityProviders=supportedIDProviders,\n        AllowedOAuthFlows=[\n            'code',\n        ],\n        AllowedOAuthScopes=[\n            'phone', 'email', 'openid', 'profile'\n        ],\n        AllowedOAuthFlowsUserPoolClient=True\n    )\n"
+                    }
+                }
+            }
+        },
+        "CleanStackNameExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Principal": {
+                                "Service": [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Effect": "Allow",
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "LogsForLambda",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLogGroup",
+                                        "logs:CreateLogStream",
+                                        "logs:PutLogEvents"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "XRay",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "xray:PutTraceSegments",
+                                        "xray:PutTelemetryRecords"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "PolicyName": "AllowVPCSupport",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ec2:DescribeNetworkInterfaces",
+                                        "ec2:CreateNetworkInterface",
+                                        "ec2:DeleteNetworkInterface"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "CleanStackName": {
+            "DependsOn": "CleanStackNameExecutionRole",
+            "Type": "Custom::CleanStackName",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "CleanStackNameFunction",
+                        "Arn"
+                    ]
+                }
+            }
+        },
+        "CleanStackNameFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Handler": "index.handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "CleanStackNameExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "python3.8",
+                "Timeout": 300,
+                "TracingConfig": {
+                    "Mode": "Active"
+                },
+                "Code": {
+                    "ZipFile": {
+                        "Fn::Sub": "from __future__ import print_function\nimport json\nimport boto3\nimport cfnresponse\nimport time\ndef handler(event, context):\n    print(json.dumps(event))\n    if (event[\"RequestType\"] == \"Delete\"):\n        responseData={\"Data\":\"OK\"}\n        try:\n            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)\n        except Exception as e:\n            print(\"Exception thrown in cfnresponse: %s\" % str(e))\n            pass\n    else:\n        val = enforceSyntax(\"${AWS::StackName}\")\n        time.sleep(10)  # pause for CloudWatch logs\n        responseData={\"Data\":\"OK\",\"CleanStackNameValue\":val}\n        try:\n            cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)\n        except Exception as e:\n            print(\"Exception thrown in cfnresponse: %s\" % str(e))\n            pass\ndef enforceSyntax(val):\n    badChars=['0','1','2','3','4','5','6','7','8','9','-']\n    goodChars=['a','b','c','d','e','f','g','h','i','j','k']\n    i=0\n    res = val\n    for b in badChars:\n        res = res.replace(b,goodChars[i])\n        i +=1\n    return res\n"
+                    }
+                }
+            }
+        }
+    }
+}
